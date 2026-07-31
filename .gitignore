@@ -86,3 +86,5 @@ pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
 release.properties
+# Local MCP server config (not part of the assignment)
+.mcp.json
