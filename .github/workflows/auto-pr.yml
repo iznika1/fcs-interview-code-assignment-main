@@ -1,0 +1,52 @@
+name: Auto PR
+
+# Opens a pull request automatically whenever a lane branch is pushed with work on it.
+# Uses the runner's built-in GITHUB_TOKEN - no personal access token needed anywhere.
+#
+# Requires: Settings -> Actions -> General -> Workflow permissions
+#           "Allow GitHub Actions to create and approve pull requests" must be enabled,
+#           otherwise gh pr create fails with 403.
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'fix/**'
+      - 'docs/**'
+      - 'chore/**'
+  # Manual sweep: opens PRs for every lane branch that has commits but no open PR.
+  # Use this for branches that were already pushed before this workflow existed.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open PR for the pushed branch
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/open-pr.sh "$BRANCH"
+
+      - name: Sweep all lane branches
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin \
+                       | sed 's|^origin/||' \
+                       | grep -E '^(feat|fix|docs|chore)/'); do
+            bash .github/scripts/open-pr.sh "$ref"
+          done
