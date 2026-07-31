@@ -65,7 +65,9 @@ Archiving is a **soft** delete: set `archivedAt` and call `update()`. Implement 
 
 Resolution: **validation applies to new writes only.** Existing rows are grandfathered; do not "fix" `import.sql`, and do not add a startup validation.
 
-Use `TILBURG-001` as the capacity-rule fixture instead — `maxCapacity 40` with `MWH.023` using 30, so there is clean, unambiguous headroom of 10.
+For the capacity rule, use `AMSTERDAM-002` (empty, 3 slots, `maxCapacity 75` — request 80) or `ZWOLLE-002` (2 slots, `maxCapacity 50`, 30 used — request 25).
+
+**Do not use `TILBURG-001` for the capacity rule.** It has `maxNumberOfWarehouses 1` and `MWH.023` already occupies it, so on a create the *count* cap fires before the capacity cap ever runs and the error says "maximum warehouse(s)", not a capacity message. `TILBURG-001` is the correct fixture for the **count** rule (W4), not the capacity rule (W5).
 
 Related trap: replacing `MWH.001` is constrained by this too. The replacement must keep stock at 10 and cannot exceed capacity 40, so it cannot reuse capacity 100.
 

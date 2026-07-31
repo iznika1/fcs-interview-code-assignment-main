@@ -151,7 +151,7 @@ Each row is one named test. Owner is the track that must turn it green. Write al
 | W2 | duplicate active business unit code → 400 | A2 | `MWH.001` |
 | W3 | non-existent location → 400 | A2 | `ATLANTIS-001` |
 | W4 | location at max warehouse count → 400 | A2 | `TILBURG-001` (max 1, has MWH.023) |
-| W5 | capacity exceeds location max capacity → 400 | A2 | `TILBURG-001` (max cap 40, 30 used) |
+| W5 | capacity exceeds location max capacity → 400 | A2 | `AMSTERDAM-002` (cap 80 > max 75) or `ZWOLLE-002` (30 of 50, +25) — **not** `TILBURG-001`, see below |
 | W6 | stock greater than capacity → 400 | A2 | cap 10 / stock 50 |
 | W7 | get existing warehouse → 200 with all fields | A3 | `MWH.012` |
 | W8 | get unknown → 404 | A3 | `MWH.999` |
