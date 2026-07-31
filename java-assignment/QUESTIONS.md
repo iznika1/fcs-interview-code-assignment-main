@@ -16,14 +16,16 @@ I would not converge all three. I would move `stores`, leave `products`, and kee
 `warehouses` as the reference.
 
 The concrete argument is testability, not purity. `CreateWarehouseUseCase` takes
-`WarehouseStore` through its constructor, so its rules can be exercised with
-`new CreateWarehouseUseCase(fakeStore)` — plain JUnit, milliseconds, no Docker. Nothing
-equivalent is possible for `StoreResource`: `Store.findById` is a static call into an
-active persistence context, so every assertion about store behaviour needs a booted
-Quarkus and a Dev Services PostgreSQL. That matters here because `StoreResource` is
-where the real defect lives — `legacyStoreManagerGateway.createStoreOnLegacySystem` runs
-inside `@Transactional`, so the legacy system is told about a store that may still roll
-back. Fixing that safely wants a seam, and Active Record denies one.
+`WarehouseStore` and `LocationResolver` through its constructor, so its rules can be
+exercised with `new CreateWarehouseUseCase(fakeStore, fakeLocationResolver)` — plain
+JUnit, milliseconds, no Docker, both collaborators faked. Nothing equivalent is possible
+for `StoreResource`: `Store.findById` is a static call into an active persistence
+context, so every assertion about store behaviour needs a booted Quarkus and a Dev
+Services PostgreSQL. That matters here because `StoreResource` is where the real defect
+was — `createStoreOnLegacySystem` ran inside `@Transactional`, so the legacy system could
+be told about a store that later rolled back. Fixing it safely needed a seam that Active
+Record does not give you, which is why the fix routes through a CDI event observed at
+`AFTER_SUCCESS` rather than a direct call. The style dictated the shape of the fix.
 
 I would leave `products` alone. The repository already provides the injection point;
 the remaining flaw is different — `ProductResource.get()` returns `List<Product>`, so
@@ -77,10 +79,10 @@ ambiguity survived because nobody read it against the domain.
 
 **Answer:**
 ```txt
-The starting point is close to zero: `CreateWarehouseUseCaseTest` is literally an empty
-class body, its two siblings likewise, `LocationGatewayTest` is commented out, and
-`WarehouseEndpointIT#testSimpleCheckingArchivingWarehouses` is a block of commented-out
-assertions.
+The starting point was close to zero: `CreateWarehouseUseCaseTest` was literally an empty
+class body, its two siblings likewise, `LocationGatewayTest` was commented out, and
+`WarehouseEndpointIT#testSimpleCheckingArchivingWarehouses` was a block of commented-out
+assertions. What follows is the order I filled them in, and why.
 
 Base of the pyramid, and where I would spend the first hours: use-case tests with
 hand-written in-memory fakes for `WarehouseStore` and `LocationResolver`. The ports make
