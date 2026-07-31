@@ -88,6 +88,31 @@
                 </configuration>
             </plugin>
             <plugin>
+                <!--
+                    Runs the @QuarkusIntegrationTest classes (*IT) against the packaged application
+                    during `mvn verify`. This was previously declared only inside the `native`
+                    profile, which meant WarehouseEndpointIT never executed in a normal build and a
+                    green `mvn verify` was misleading. The `native` profile still overrides the
+                    configuration below to point at the native binary.
+                -->
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${surefire-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <systemPropertyVariables>
+                                <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                                <maven.home>${maven.home}</maven.home>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <!-- This is what injects the magic Quarkus bytecode -->
                 <groupId>${quarkus.platform.group-id}</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>

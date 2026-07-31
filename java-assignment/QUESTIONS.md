@@ -100,10 +100,12 @@ cannot prove that `getAll()` and `findByBusinessUnitCode` actually filter on
 Top: a handful of endpoint tests for wiring, status codes and serialization only. Each
 one costs a container start, so they verify plumbing, not rules.
 
-Keeping it honest over time comes down to three fixes. First, `maven-failsafe-plugin` is
-declared only inside the `native` profile, so `WarehouseEndpointIT` never runs in a
-normal build and a green `mvnw verify` is misleading — either move Failsafe into the
-default build or make it a `@QuarkusTest`. Second, remove the shared mutable fixture:
+Keeping it honest over time comes down to three fixes. First, `maven-failsafe-plugin` was
+declared only inside the `native` profile, so `WarehouseEndpointIT` never ran in a normal
+build and a green `mvnw verify` was misleading — a test that cannot fail is worse than no
+test, because it reports confidence it has not earned. I moved Failsafe into the default
+build, so `mvnw verify` now actually exercises the packaged jar. Second, remove the shared
+mutable fixture:
 `ProductEndpointTest` deletes product 1 from the `import.sql` seed, so any second test
 listing products becomes order-dependent; tests should create their own data or use
 `@TestTransaction`. Third, do not trust the seed as a valid fixture — it puts `MWH.001`
