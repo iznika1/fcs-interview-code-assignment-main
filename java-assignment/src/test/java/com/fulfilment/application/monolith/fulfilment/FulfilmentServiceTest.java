@@ -118,6 +118,22 @@ public class FulfilmentServiceTest {
 
   @Test
   @TestTransaction
+  public void reusingAProductTypeTheWarehouseAlreadyStoresDoesNotConsumeASlot() {
+    long[] products = {1L, 2L, 3L, givenProduct("FUL-R4"), givenProduct("FUL-R5")};
+    for (long productId : products) {
+      fulfilmentService.associate(STORE_TONSTAD, productId, "MWH.001");
+    }
+
+    // MWH.001 is now at its 5 product types. A different store asking it to fulfil a product it
+    // ALREADY stores adds no new type, so it must be allowed. This is the normal case as soon as
+    // two stores share a warehouse and their catalogues overlap, not an edge case.
+    fulfilmentService.associate(STORE_KALLAX, 3L, "MWH.001");
+
+    assertEquals(6, fulfilmentService.listAll().size());
+  }
+
+  @Test
+  @TestTransaction
   public void countsProductTypesPerWarehouseAcrossStores() {
     long[] products = {1L, 2L, 3L, givenProduct("FUL-X4"), givenProduct("FUL-X5")};
     for (long productId : products) {
