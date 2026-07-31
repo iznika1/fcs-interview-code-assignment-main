@@ -103,19 +103,115 @@ This is the only area with a real layering discipline, and it's where most of th
 - `warehouses/domain/usecases/` — CDI beans implementing the inbound ports; this is where the business validations belong (business unit code uniqueness, location existence, max warehouses per location, capacity vs. location max capacity, stock fits capacity, and for replacement: new capacity accommodates old stock and stocks match).
 - `warehouses/adapters/database/` — `DbWarehouse` (`@Entity`, table `warehouse`) plus `WarehouseRepository`, which implements both `WarehouseStore` and `PanacheRepository<DbWarehouse>` and converts between `DbWarehouse` and the domain `Warehouse`.
 - `warehouses/adapters/restapi/WarehouseResourceImpl` — implements the *generated* interface and maps the domain `Warehouse` to the generated `com.warehouse.api.beans.Warehouse` bean.
-- `location/LocationGateway` — implements `LocationResolver` against a hardcoded static list of locations (each with `maxNumberOfWarehouses` and `maxCapacity`). It is not a CDI bean yet, so it won't inject into a use case as-is.
+- `location/LocationGateway` — `@ApplicationScoped`, implements `LocationResolver` against a hardcoded static list of locations (each with `maxNumberOfWarehouses` and `maxCapacity`).
+
+```mermaid
+flowchart LR
+    HTTP([HTTP]) --> RES
+
+    subgraph inbound["inbound adapter"]
+        RES["WarehouseResourceImpl<br/><i>implements the generated interface</i>"]
+    end
+
+    subgraph core["domain — imports no jakarta.ws.rs / persistence / transaction"]
+        IN[["CreateWarehouseOperation<br/>ReplaceWarehouseOperation<br/>ArchiveWarehouseOperation"]]
+        UC["use cases<br/>+ WarehouseRules"]
+        OUT1[["WarehouseStore"]]
+        OUT2[["LocationResolver"]]
+        IN --> UC
+        UC --> OUT1
+        UC --> OUT2
+    end
+
+    subgraph outbound["outbound adapters"]
+        REPO["WarehouseRepository<br/>↔ DbWarehouse"]
+        LOC["LocationGateway"]
+    end
+
+    RES --> IN
+    OUT1 --> REPO
+    OUT2 --> LOC
+    REPO --> DB[(PostgreSQL)]
+```
+
+The arrows only ever point **inwards**. That is the property the `jakarta.*` grep in *Working conventions* protects.
 
 Archiving is a soft delete: `DbWarehouse.archivedAt` is set rather than the row being deleted. "Replace" means archive the existing warehouse holding a business unit code, then create a new one reusing that same code, preserving history.
+
+The order of those two writes matters, and getting it backwards silently destroys the history the feature exists to preserve — `update()` resolves its row by business unit code among *active* rows, so creating first would make the update target the new generation:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant R as WarehouseResourceImpl
+    participant UC as ReplaceWarehouseUseCase
+    participant S as WarehouseStore
+
+    C->>R: POST /warehouse/{buCode}/replacement
+    activate R
+    Note over R: @Transactional — one unit of work
+    R->>UC: replace(newWarehouse)
+
+    UC->>UC: validateSelfConsistent(new)
+    UC->>S: findByBusinessUnitCode(buCode)
+    S-->>UC: previous (active only, or null → 404)
+    UC->>UC: new capacity ≥ previous stock?<br/>new stock == previous stock?
+    UC->>UC: validateFitsLocation(new, freed = previous.buCode)
+
+    Note over UC: every rule runs BEFORE the first write,<br/>so a rejected replacement leaves the old one active
+
+    UC->>S: update(previous, archivedAt = now)
+    UC->>S: create(new, same buCode)
+    UC-->>R: done
+    Note over R: commit — both writes, or neither
+    R-->>C: 200
+    deactivate R
+```
 
 ### Generated OpenAPI code
 
 `src/main/resources/openapi/warehouse-openapi.yaml` is the source of truth for the Warehouse HTTP API. `quarkus-openapi-generator-server` generates the `WarehouseResource` interface and `beans` into `target/generated-sources/...` under base package `com.warehouse.api` (configured in `application.properties`). Changing the API contract means editing the YAML and rebuilding — never hand-edit generated sources. In IntelliJ, if generated types aren't resolved, mark the generated `jaxrs` folder under `target/` as a generated sources root.
 
-Note the spec's `/warehouse/{id}` path uses a generic `id` while the replacement path uses `businessUnitCode`; the domain identifies warehouses by business unit code, so decide and document which one `getAWarehouseUnitByID` / `archiveAWarehouseUnitByID` accept.
+The spec's `/warehouse/{id}` path uses a generic `id` while the replacement path uses `businessUnitCode`, and the domain `Warehouse` model has no id field at all. **This project resolves `{id}` as the business unit code** for both GET and DELETE — domain-consistent, and the only identity the model actually carries. The spec's `"456"` example is misleading.
+
+The generated bean also carries an `id` field with no domain counterpart, so it is always null in responses. That, the `{id}` ambiguity, and the spec's inability to express a 201 on create are three concrete examples of generated-spec versus domain drift.
 
 ### Transactions and the legacy gateway
 
-`StoreResource` methods are `@Transactional` and call `LegacyStoreManagerGateway` *inside* the transaction — so the legacy system can be notified about a change that later rolls back. Task 2 of the assignment is to make those calls fire only after commit (e.g. a CDI event observed with `@Observes(during = TransactionPhase.AFTER_SUCCESS)`, or a `Synchronization`/`TransactionSynchronizationRegistry` hook).
+`StoreResource` writes and the `LegacyStoreManagerGateway` call must not share a fate: notifying a downstream system about a change that later rolls back is worse than notifying it late. The resource fires a CDI event inside its transaction; `LegacyStoreSynchronizer` observes it at `AFTER_SUCCESS`, so the gateway is reached only once the commit has actually happened.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant SR as StoreResource
+    participant DB as PostgreSQL
+    participant EV as CDI event
+    participant LS as LegacyStoreSynchronizer
+    participant LG as LegacyStoreManagerGateway
+
+    C->>SR: POST /store
+    activate SR
+    Note over SR: @Transactional
+    SR->>DB: persist(store)
+    SR->>EV: fire(StoreChangedEvent.created(store))
+    Note over EV: queued, not delivered yet
+
+    alt transaction commits
+        SR->>DB: COMMIT
+        EV->>LS: @Observes(during = AFTER_SUCCESS)
+        LS->>LG: createStoreOnLegacySystem(store)
+        Note over LG: legacy system sees only committed data
+    else transaction rolls back
+        SR->>DB: ROLLBACK
+        Note over EV,LG: observer never runs — no phantom notification
+    end
+    deactivate SR
+    SR-->>C: 201
+```
+
+The event carries a detached snapshot of the **persisted** entity, not the request body, so the id is populated and the observer never touches a managed entity after the persistence context has closed.
 
 ### Data and schema
 
