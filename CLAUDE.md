@@ -53,9 +53,33 @@ docker run -it --rm=true --name quarkus_test -e POSTGRES_USER=quarkus_test -e PO
 java -jar ./target/quarkus-app/quarkus-run.jar
 ```
 
-### Gotcha: `*IT` tests do not run by default
+Integration tests (`*IT`, `@QuarkusIntegrationTest`) run against the **packaged jar** and are bound to `verify`, not `test`:
 
-`maven-failsafe-plugin` is declared only inside the `native` profile in `pom.xml`, so `WarehouseEndpointIT` (a `@QuarkusIntegrationTest`) is never executed by `./mvnw verify` in a normal build. To exercise it, either add Failsafe to the default build or convert the test to `@QuarkusTest`/`*Test`. Don't assume a green `verify` means the IT passed.
+```bash
+./mvnw verify
+```
+
+### Gotcha: `JAVA_HOME` must point at a JDK 17+
+
+If `JAVA_HOME` points at a JRE 8, `./mvnw` dies before compiling anything with `GenerateCodeMojo has been compiled by a more recent version of the Java Runtime (class file version 55.0)`. Maven follows `JAVA_HOME`, not the `java` on `PATH`. The symptom is misleading — it looks like `com.warehouse.api.WarehouseResource` is missing, because code generation never ran.
+
+```bash
+export JAVA_HOME="/path/to/jdk-17"
+```
+
+### Gotcha: the Quarkus HTTP test port is fixed
+
+`@QuarkusTest` binds port 8081, so two concurrent Maven runs collide with `QuarkusBindException: Port(s) already bound: 8081`. Pass a CLI override rather than editing `application.properties`:
+
+```bash
+./mvnw test -Dquarkus.http.test-port=0
+```
+
+### Gotcha: `import.sql` seeds shared, mutable state
+
+Every `@QuarkusTest` shares the seeded rows, and `ProductEndpointTest` *deletes* product 1. New tests should use `@TestTransaction` or create their own data rather than mutating `MWH.001`/`TONSTAD`. Endpoint tests that go over HTTP cannot use `@TestTransaction` (the server commits in its own transaction) — those must clean up after themselves; see `FulfilmentEndpointTest`.
+
+Note also that the seed itself violates a business rule: `MWH.001` sits in `ZWOLLE-001` with capacity 100 against a location maximum of 40. Validation applies to new writes only, so existing rows are grandfathered — don't use `ZWOLLE-001` as a capacity fixture. `TILBURG-001` is count-capped at 1 and already occupied, so it only exercises the count rule; use `AMSTERDAM-002` or `ZWOLLE-002` for capacity.
 
 ## Architecture
 
@@ -66,6 +90,9 @@ Three subpackages under `com.fulfilment.application.monolith`, each deliberately
 | `stores` | Active Record — `Store extends PanacheEntity`, static `Store.findById(...)` called from the resource | Hand-written JAX-RS resource |
 | `products` | Repository — `ProductRepository implements PanacheRepository<Product>` | Hand-written JAX-RS resource |
 | `warehouses` | Hexagonal — domain model + ports, repository adapter maps to/from a separate `DbWarehouse` entity | Generated from OpenAPI spec |
+| `fulfilment` | Repository + service — rules in `FulfilmentService`, persistence in `FulfilmentRepository` | Hand-written, with request/response records |
+
+`fulfilment` is the one package added after the original skeleton. It associates warehouses as fulfilment units for products per store, capped at 2 warehouses per product per store, 3 warehouses per store, and 5 product types per warehouse. Each cap counts *distinct* participants and reusing one the store or warehouse already has does not consume a slot — without that exemption the second and third rules are mutually unsatisfiable. It references warehouses by business unit code, not row id, so an association survives a warehouse replacement.
 
 ### Warehouse: ports and adapters
 
@@ -96,8 +123,9 @@ Note the spec's `/warehouse/{id}` path uses a generic `id` while the replacement
 
 ## Working conventions
 
-- Unimplemented work is marked by methods throwing `UnsupportedOperationException` or a `// TODO implement this method` comment — grep for those to find the remaining scope.
-- Several existing tests are stubs with their bodies commented out (`LocationGatewayTest`, `WarehouseEndpointIT#testSimpleCheckingArchivingWarehouses`, `CreateWarehouseUseCaseTest` and siblings are empty). Uncomment and flesh them out as the corresponding implementation lands.
-- Both `ProductResource` and `StoreResource` declare their own nested `ErrorMapper implements ExceptionMapper<Exception>` `@Provider`. Two global mappers for the same exception type is a smell worth noting, and any new resource should not add a third.
+- The assignment's stubs are all implemented — no `UnsupportedOperationException` or `// TODO implement` remains in `src/main/java`. That grep is still the fastest way to check nothing has regressed.
+- Business rules belong in `warehouses/domain/usecases/`, never in the resource or the repository. Test them with hand-written in-memory fakes for the ports — plain JUnit, no Quarkus boot, no mocking framework. The existing use-case tests run in well under a second for this reason; keep it that way.
+- Both `ProductResource` and `StoreResource` declare their own nested `ErrorMapper implements ExceptionMapper<Exception>` `@Provider`. Two global mappers for the same exception type is a smell worth noting, and any new resource should not add a third — prefer mappers typed to a concrete domain exception, as `warehouses/adapters/restapi` and `fulfilment` do. A typed mapper takes precedence over the catch-alls.
+- `ProductResource` and `StoreResource` expose their JPA entities directly as request and response bodies, so the schema *is* the wire contract. Don't copy that in new code; `fulfilment` uses request/response records instead.
 - Code style is 2-space indent, google-java-format shape (as produced by the existing files). There is no formatter or linter plugin configured in `pom.xml` — nothing enforces this automatically.
 - `pom.xml` sets `maven.compiler.release=17` while the compiler plugin still pins `source`/`target` to `11`. `release` wins, so Java 17 features compile fine (existing code already uses `var` and `Stream.toList()`); the stale `source`/`target` is leftover noise, not a real constraint. `<parameters>true</parameters>` is required for RESTEasy parameter binding — don't remove it.
