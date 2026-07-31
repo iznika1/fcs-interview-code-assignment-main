@@ -21,6 +21,11 @@ import java.util.List;
  * <p>Hand-written rather than generated: {@code warehouse-openapi.yaml} covers the warehouse API
  * only, and extending a frozen spec was out of scope for this feature.
  *
+ * <p>Request and response bodies are records rather than the {@link Fulfilment} entity, so the
+ * schema can change without silently changing the published API. The surrounding hand-written
+ * resources do expose their entities directly, but that is the flaw QUESTIONS.md answer 1 singles
+ * out — following the convention here would have been consistent and wrong.
+ *
  * <p>Error mapping is done with exception mappers typed to the concrete fulfilment exceptions, in
  * the same shape used by the warehouse adapter, rather than adding another
  * {@code ExceptionMapper<Exception>} catch-all — the codebase already carries two of those.
@@ -34,30 +39,27 @@ public class FulfilmentResource {
   @Inject FulfilmentService fulfilmentService;
 
   @GET
-  public List<Fulfilment> list() {
-    return fulfilmentService.listAll();
+  public List<FulfilmentResponse> list() {
+    return fulfilmentService.listAll().stream().map(FulfilmentResponse::from).toList();
   }
 
   @GET
   @Path("store/{storeId}")
-  public List<Fulfilment> listForStore(Long storeId) {
-    return fulfilmentService.listForStore(storeId);
+  public List<FulfilmentResponse> listForStore(Long storeId) {
+    return fulfilmentService.listForStore(storeId).stream().map(FulfilmentResponse::from).toList();
   }
 
   @POST
-  public Response associate(Fulfilment request) {
+  public Response associate(FulfilmentRequest request) {
     if (request == null) {
       throw new FulfilmentValidationException("A fulfilment association must be provided.");
-    }
-    if (request.id != null) {
-      throw new FulfilmentValidationException("Id was invalidly set on request.");
     }
 
     Fulfilment created =
         fulfilmentService.associate(
-            request.storeId, request.productId, request.warehouseBusinessUnitCode);
+            request.storeId(), request.productId(), request.warehouseBusinessUnitCode());
 
-    return Response.ok(created).status(201).build();
+    return Response.ok(FulfilmentResponse.from(created)).status(201).build();
   }
 
   @DELETE
