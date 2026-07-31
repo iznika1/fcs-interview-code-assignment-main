@@ -11,7 +11,11 @@ if [ "$BRANCH" = "$BASE" ]; then
   exit 0
 fi
 
-git fetch origin "$BASE" "$BRANCH" --quiet
+# Explicit refspecs: the sweep runs from master's checkout, which has no
+# remote-tracking refs for the other branches until we create them here.
+git fetch --quiet origin \
+  "+refs/heads/$BASE:refs/remotes/origin/$BASE" \
+  "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
 
 AHEAD=$(git rev-list --count "origin/$BASE..origin/$BRANCH")
 if [ "$AHEAD" -eq 0 ]; then
@@ -26,7 +30,6 @@ if [ -n "$EXISTING" ]; then
 fi
 
 TITLE=$(git log -1 --pretty=%s "origin/$BRANCH")
-
 COMMITS=$(git log --reverse --pretty='- %s' "origin/$BASE..origin/$BRANCH")
 FILES=$(git diff --name-only "origin/$BASE...origin/$BRANCH" | sed 's|^|- `|; s|$|`|')
 

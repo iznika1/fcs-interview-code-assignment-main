@@ -1,11 +1,17 @@
 name: Auto PR
 
-# Opens a pull request automatically whenever a lane branch is pushed with work on it.
+# Opens a pull request automatically for lane branches.
 # Uses the runner's built-in GITHUB_TOKEN - no personal access token needed anywhere.
 #
 # Requires: Settings -> Actions -> General -> Workflow permissions
 #           "Allow GitHub Actions to create and approve pull requests" must be enabled,
 #           otherwise gh pr create fails with 403.
+#
+# IMPORTANT - why workflow_dispatch exists:
+#   GitHub resolves a push-triggered workflow from the file as it exists ON THE PUSHED REF,
+#   not from the default branch. Branches cut before this workflow landed on master do not
+#   contain it, so pushing them triggers nothing at all. The manual sweep below runs from
+#   master and opens PRs for every lane branch regardless of what those branches contain.
 
 on:
   push:
@@ -14,8 +20,6 @@ on:
       - 'fix/**'
       - 'docs/**'
       - 'chore/**'
-  # Manual sweep: opens PRs for every lane branch that has commits but no open PR.
-  # Use this for branches that were already pushed before this workflow existed.
   workflow_dispatch:
 
 permissions:
@@ -34,19 +38,19 @@ jobs:
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/open-pr.sh "$BRANCH"
+        run: bash .github/scripts/open-pr.sh "${{ github.ref_name }}"
 
-      - name: Sweep all lane branches
+      - name: Sweep every lane branch
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin \
-                       | sed 's|^origin/||' \
-                       | grep -E '^(feat|fix|docs|chore)/'); do
-            bash .github/scripts/open-pr.sh "$ref"
-          done
+          # Enumerate via the API, not git refs: actions/checkout only fetches the
+          # triggering ref, so refs/remotes/origin/* would be empty here.
+          gh api "repos/$REPO/branches" --paginate --jq '.[].name' \
+            | grep -E '^(feat|fix|docs|chore)/' \
+            | while read -r branch; do
+                bash .github/scripts/open-pr.sh "$branch" || echo "::warning::failed for $branch"
+              done
