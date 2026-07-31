@@ -129,7 +129,10 @@ public class FulfilmentServiceTest {
     // two stores share a warehouse and their catalogues overlap, not an edge case.
     fulfilmentService.associate(STORE_KALLAX, 3L, "MWH.001");
 
-    assertEquals(6, fulfilmentService.listAll().size());
+    // Scoped per store rather than listAll(): FulfilmentEndpointTest commits rows over HTTP, so a
+    // global count would couple this assertion to that class's cleanup and fail order-dependently.
+    assertEquals(5, fulfilmentService.listForStore(STORE_TONSTAD).size());
+    assertEquals(1, fulfilmentService.listForStore(STORE_KALLAX).size());
   }
 
   @Test
