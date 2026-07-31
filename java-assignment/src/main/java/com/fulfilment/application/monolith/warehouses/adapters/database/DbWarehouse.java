@@ -39,4 +39,24 @@ public class DbWarehouse {
     warehouse.archivedAt = this.archivedAt;
     return warehouse;
   }
+
+  /** Builds a new, unmanaged entity out of a domain warehouse. */
+  public static DbWarehouse fromWarehouse(Warehouse warehouse) {
+    var dbWarehouse = new DbWarehouse();
+    dbWarehouse.mergeFrom(warehouse);
+    return dbWarehouse;
+  }
+
+  /**
+   * Copies the mutable state of a domain warehouse onto this entity. The primary key is untouched,
+   * so this is safe to call on a managed row.
+   */
+  public void mergeFrom(Warehouse warehouse) {
+    this.businessUnitCode = warehouse.businessUnitCode;
+    this.location = warehouse.location;
+    this.capacity = warehouse.capacity;
+    this.stock = warehouse.stock;
+    this.createdAt = warehouse.createdAt;
+    this.archivedAt = warehouse.archivedAt;
+  }
 }
