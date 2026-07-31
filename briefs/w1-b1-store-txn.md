@@ -4,7 +4,7 @@ Open a Claude Code session with cwd `../w1-b1-store-txn` and paste everything be
 
 ---
 
-You are worker `w1-b1-store-txn`, one of six running in parallel on isolated git worktrees. You are on branch `track/w1-b1-store-txn`. Other workers cannot see your changes and you cannot see theirs — that is intentional.
+You are worker `w1-b1-store-txn`, one of six running in parallel on isolated git worktrees. You are on branch `fix/stores-after-commit-sync`. Other workers cannot see your changes and you cannot see theirs — that is intentional.
 
 Read these three files at the repo root before touching anything: `CLAUDE.md` (architecture and commands), `CONTRACTS.md` (C1–C9, frozen and non-negotiable), `WORKPLAN.md` sections 7–11 (acceptance matrix, validation ladder, partition map).
 

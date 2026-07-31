@@ -244,12 +244,12 @@ Wave 0 and the convergence waves are solo, so they carry no track letter: `w0-co
 | Worker ID | Wave | Branch | Commit scope | Acceptance rows | Parallel with |
 |---|---|---|---|---|---|
 | `w0-contracts` | 0 | `main` | `chore(contracts)` | authors all 25 red | — (solo, blocks everything) |
-| `w1-a1-adapters` | 1 | `track/w1-a1-adapters` | `feat(warehouse-db)` | L1, L2, W11, W12 | a2, a3, b1, c1, c2 |
-| `w1-a2-usecases` | 1 | `track/w1-a2-usecases` | `feat(warehouse-domain)` | W2–W6, W13–W16 | a1, a3, b1, c1, c2 |
-| `w1-a3-restapi` | 1 | `track/w1-a3-restapi` | `feat(warehouse-api)` | W1, W7–W10 | a1, a2, b1, c1, c2 |
-| `w1-b1-store-txn` | 1 | `track/w1-b1-store-txn` | `fix(stores)` | S1–S4 | all of wave 1 |
-| `w1-c1-questions` | 1 | `track/w1-c1-questions` | `docs(questions)` | none | all of wave 1 |
-| `w1-c2-casestudy` | 1 | `track/w1-c2-casestudy` | `docs(case-study)` | none | all of wave 1 |
+| `w1-a1-adapters` | 1 | `feat/warehouse-db` | `feat(warehouse-db)` | L1, L2, W11, W12 | a2, a3, b1, c1, c2 |
+| `w1-a2-usecases` | 1 | `feat/warehouse-domain` | `feat(warehouse-domain)` | W2–W6, W13–W16 | a1, a3, b1, c1, c2 |
+| `w1-a3-restapi` | 1 | `feat/warehouse-api` | `feat(warehouse-api)` | W1, W7–W10 | a1, a2, b1, c1, c2 |
+| `w1-b1-store-txn` | 1 | `fix/stores-after-commit-sync` | `fix(stores)` | S1–S4 | all of wave 1 |
+| `w1-c1-questions` | 1 | `docs/questions` | `docs(questions)` | none | all of wave 1 |
+| `w1-c2-casestudy` | 1 | `docs/case-study` | `docs(case-study)` | none | all of wave 1 |
 | `w2-integrate` | 2 | `main` | `chore(integration)` | verifies all 22 | — (solo) |
 | `w3-d1-fulfilment` | 3 | `track/w3-d1-fulfilment` | `feat(fulfilment)` | B1–B3 | — (solo) |
 | `w4-polish` | 4 | `main` | `docs(polish)` | verifies all 25 | — (solo) |
@@ -305,7 +305,7 @@ The integration branch here is **`master`** (this repo was `git init`-ed with gi
 One isolated worktree per worker, created as sibling directories so each session gets its own checkout and its own `target/`:
 
 ```bash
-git worktree add ../w1-a1-adapters -b track/w1-a1-adapters
+git worktree add ../w1-a1-adapters -b feat/warehouse-db
 ```
 
 Rung 3 of the validation ladder, run by each worker before reporting done — prints anything that escaped the lane:
@@ -317,7 +317,7 @@ git diff --name-only master
 Converge in this order at wave 2, least to most entangled, so conflicts surface early and cheap:
 
 ```bash
-git checkout master && git merge --no-ff track/w1-c2-casestudy track/w1-c1-questions track/w1-b1-store-txn track/w1-a1-adapters track/w1-a2-usecases track/w1-a3-restapi
+git checkout master && git merge --no-ff docs/case-study docs/questions fix/stores-after-commit-sync feat/warehouse-db feat/warehouse-domain feat/warehouse-api
 ```
 
 Clean up the worktrees once merged:

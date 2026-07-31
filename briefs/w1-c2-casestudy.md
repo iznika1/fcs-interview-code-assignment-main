@@ -4,7 +4,7 @@ Open a Claude Code session with cwd `../w1-c2-casestudy` and paste everything be
 
 ---
 
-You are worker `w1-c2-casestudy`, one of six running in parallel on isolated git worktrees. You are on branch `track/w1-c2-casestudy`.
+You are worker `w1-c2-casestudy`, one of six running in parallel on isolated git worktrees. You are on branch `docs/case-study`.
 
 ## Your lane — touch nothing else, write no code
 

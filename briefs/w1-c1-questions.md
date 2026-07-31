@@ -4,7 +4,7 @@ Open a Claude Code session with cwd `../w1-c1-questions` and paste everything be
 
 ---
 
-You are worker `w1-c1-questions`, one of six running in parallel on isolated git worktrees. You are on branch `track/w1-c1-questions`.
+You are worker `w1-c1-questions`, one of six running in parallel on isolated git worktrees. You are on branch `docs/questions`.
 
 ## Your lane — touch nothing else, write no code
 
