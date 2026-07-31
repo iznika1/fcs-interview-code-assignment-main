@@ -81,7 +81,21 @@ The assignment budgets ~4h. Coordination overhead is real, so:
 - **Subagents vs sessions:** use subagents for Track C (self-contained writing, returns a finished artifact) and for read-only investigation. Use real sessions for A and B, which need iterative `mvnw test` cycles.
 
 ### Machine contention — the practical limit
-Each `@QuarkusTest` run starts a throwaway PostgreSQL via Dev Services and boots the app (~10–20s). Three sessions running `mvnw test` simultaneously means three containers plus three JVMs. Ports are randomised so it works, but it thrashes. Mitigations:
+Each `@QuarkusTest` run starts a throwaway PostgreSQL via Dev Services and boots the app (~10–20s). Three sessions running `mvnw test` simultaneously means three containers plus three JVMs.
+
+**The HTTP test port is NOT randomised** — it is fixed at 8081, so concurrent workers collide outright:
+
+```
+QuarkusBindException: Port(s) already bound: 8081
+```
+
+Every worker that boots Quarkus must therefore run:
+
+```bash
+./mvnw test -Dquarkus.http.test-port=0
+```
+
+A CLI override, so `application.properties` stays in the frozen zone. Treat this as the standard wave-1 test command for lanes a1, a3, b1, and d1. Further mitigations:
 - Keep **one** `./mvnw quarkus:dev` running for manual pokes; do not start it per session.
 - Track A2's use-case tests need no Quarkus boot at all if you use plain-JUnit fakes — that keeps the fast inner loop off Docker entirely.
 - Stagger the full `mvnw test` runs.
