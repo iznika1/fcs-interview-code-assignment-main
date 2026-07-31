@@ -5,7 +5,6 @@ import static com.fulfilment.application.monolith.warehouses.domain.usecases.War
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -42,7 +41,6 @@ class ReplaceWarehouseUseCaseTest {
 
     useCase.replace(replacement);
 
-    assertNotNull(previous.archivedAt, "the replaced warehouse must be archived");
     assertEquals(List.of("MWH.023"), store.updateCalls, "archiving goes through update()");
     assertEquals(List.of("MWH.023"), store.createCalls, "the replacement is a new row");
     assertTrue(store.removeCalls.isEmpty(), "archiving is a soft delete, never a removal");
@@ -52,8 +50,27 @@ class ReplaceWarehouseUseCaseTest {
 
     // the history is kept: two rows share the code, only the replacement is active
     assertEquals(2, store.allRows().size());
-    assertSame(replacement, store.findByBusinessUnitCode("MWH.023"));
     assertEquals(1, store.getAll().size());
+
+    var archivedGeneration = store.historyOf("MWH.023");
+    assertEquals(1, archivedGeneration.size(), "the replaced generation survives as history");
+    assertEquals(30, archivedGeneration.get(0).capacity, "with its own capacity untouched");
+    assertNotNull(archivedGeneration.get(0).archivedAt);
+
+    var active = store.findByBusinessUnitCode("MWH.023");
+    assertNotNull(active, "the code stays resolvable, now pointing at the replacement");
+    assertEquals(35, active.capacity);
+    assertEquals(27, active.stock);
+  }
+
+  @Test
+  @DisplayName("W13 — the previous warehouse is archived before the replacement is created")
+  void archivesBeforeCreating() {
+    useCase.replace(warehouse("MWH.023", "TILBURG-001", 35, 27));
+
+    // The store resolves update() by business unit code among the ACTIVE rows. Creating first would
+    // make the update land on the replacement and archive the wrong generation.
+    assertEquals(List.of("update:MWH.023", "create:MWH.023"), store.callLog);
   }
 
   @Test
@@ -117,7 +134,9 @@ class ReplaceWarehouseUseCaseTest {
   @Test
   @DisplayName("W16 — an already archived warehouse is not replaceable")
   void treatsAnAlreadyArchivedWarehouseAsUnknown() {
-    previous.archivedAt = LocalDateTime.now();
+    var active = store.findByBusinessUnitCode("MWH.023");
+    active.archivedAt = LocalDateTime.now();
+    store.update(active);
 
     assertThrows(
         WarehouseNotFoundException.class,
@@ -148,9 +167,14 @@ class ReplaceWarehouseUseCaseTest {
 
   /** A rejected replacement must leave the warehouse it would have replaced active and untouched. */
   private void assertNothingWasWritten() {
-    assertNull(previous.archivedAt, "the replaced warehouse must stay active");
     assertTrue(store.createCalls.isEmpty());
     assertTrue(store.updateCalls.isEmpty());
     assertTrue(store.removeCalls.isEmpty());
+
+    assertEquals(1, store.allRows().size(), "no row may be added");
+    var untouched = store.findByBusinessUnitCode(previous.businessUnitCode);
+    assertNotNull(untouched, "the replaced warehouse must stay active");
+    assertEquals(previous.capacity, untouched.capacity);
+    assertEquals(previous.stock, untouched.stock);
   }
 }
