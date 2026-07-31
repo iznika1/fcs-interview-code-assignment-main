@@ -300,20 +300,28 @@ The ports and models are frozen because they are the shared contract; a wave-1 w
 
 ### Dispatch commands
 
-Create the lane before starting a worker:
+The integration branch here is **`master`** (this repo was `git init`-ed with git's default, not GitHub's `main`). Substitute accordingly if you rename it.
+
+One isolated worktree per worker, created as sibling directories so each session gets its own checkout and its own `target/`:
 
 ```bash
-git checkout main && git checkout -b track/w1-a2-usecases
+git worktree add ../w1-a1-adapters -b track/w1-a1-adapters
 ```
 
-Rung 3 of the validation ladder, per worker — prints anything that escaped the lane:
+Rung 3 of the validation ladder, run by each worker before reporting done — prints anything that escaped the lane:
 
 ```bash
-git diff --name-only main
+git diff --name-only master
 ```
 
 Converge in this order at wave 2, least to most entangled, so conflicts surface early and cheap:
 
 ```bash
-git checkout main && git merge --no-ff track/w1-c2-casestudy track/w1-c1-questions track/w1-b1-store-txn track/w1-a1-adapters track/w1-a2-usecases track/w1-a3-restapi
+git checkout master && git merge --no-ff track/w1-c2-casestudy track/w1-c1-questions track/w1-b1-store-txn track/w1-a1-adapters track/w1-a2-usecases track/w1-a3-restapi
+```
+
+Clean up the worktrees once merged:
+
+```bash
+git worktree remove ../w1-a1-adapters
 ```
